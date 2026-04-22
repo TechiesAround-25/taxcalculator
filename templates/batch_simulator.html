@@ -1,0 +1,170 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Batch PAYE Processor</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] }
+    }
+  }
+}
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  .table-shell { scrollbar-width: thin; }
+</style>
+</head>
+<body class="bg-gradient-to-br from-slate-100 via-white to-slate-200 min-h-screen p-4 md:p-8 font-sans text-slate-800">
+  <div id="batchApp" class="max-w-7xl mx-auto space-y-6" data-api-url="{% url 'calculate-tax' %}">
+    <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-blue-500">Batch Processing</p>
+        <h1 class="text-3xl font-bold">Batch PAYE Processor</h1>
+        <p class="mt-1 text-sm text-slate-500">Paste CSV rows, process them one by one against the existing tax API, and review the results in a single table.</p>
+      </div>
+      <div class="flex gap-3">
+        <a href="{% url 'simulator' %}" class="inline-flex items-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50">Single Simulator</a>
+      </div>
+    </div>
+
+    <div class="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+      <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/50">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold">Paste CSV</h2>
+            <p class="text-sm text-slate-500">The parser supports quoted values like `"9,900.29"`.</p>
+          </div>
+          <button id="loadSampleButton" type="button" class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100">Load Sample</button>
+        </div>
+
+        <textarea id="csvInput" class="mt-4 min-h-[320px] w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500" spellcheck="false" placeholder="Paste CSV here..."></textarea>
+
+        <div class="mt-5 grid gap-4 md:grid-cols-3">
+          <label class="block">
+            <span class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">Tax-Free Mode</span>
+            <select id="defaultTaxFreeMode" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500">
+              <option value="pound">Treat column as pounds</option>
+              <option value="percent">Treat column as percent</option>
+            </select>
+          </label>
+
+          <label class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <input id="defaultIsSsas" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+            <span>
+              <span class="block text-sm font-semibold text-slate-700">Default SSAS</span>
+              <span class="block text-xs text-slate-500">Used when the CSV has no SSAS column.</span>
+            </span>
+          </label>
+
+          <label class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <input id="defaultOnlyIncome" type="checkbox" checked class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+            <span>
+              <span class="block text-sm font-semibold text-slate-700">Default Only Income</span>
+              <span class="block text-xs text-slate-500">Used when the CSV has no Only Income column.</span>
+            </span>
+          </label>
+        </div>
+
+        <div class="mt-5 flex flex-wrap gap-3">
+          <button id="processButton" type="button" class="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-200/60 transition hover:from-blue-700 hover:to-indigo-700">Process CSV</button>
+          <button id="downloadButton" type="button" disabled class="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-400 transition disabled:cursor-not-allowed disabled:bg-slate-100">Download Results CSV</button>
+          <button id="clearButton" type="button" class="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">Clear Results</button>
+        </div>
+      </section>
+
+      <aside class="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/50">
+        <h2 class="text-lg font-bold">Supported Columns</h2>
+        <div class="mt-3 space-y-3 text-sm text-slate-600">
+          <p><strong>Required:</strong> `First Name`, `Last Name`, `Frequency`, `Pension Withdrawl`, `TaxFree Portion`, `Tax Code`, `Cummulative`, `YTD Gross`, `YTD Tax`, `Current Period No`</p>
+          <p><strong>Also supported:</strong> `Actual YTD`, `Actual YTD Tax`, `Tax`, `Current Tax`, `Gross`, `Pension Withdrawal`, `TaxFree Mode`, `SSAS`, `Only Income`</p>
+          <p>Recognised frequency values: `Monthly`, `Weekly`, `Annual`.</p>
+          <p>`Cummulative` accepts values like `Yes`, `No`, `True`, `False`, `1`, `0`.</p>
+          <p>If a CSV uses `Actual YTD` and `Actual YTD Tax`, the importer treats them as cumulative totals including the current row and converts them back to prior YTD before calling the API.</p>
+        </div>
+
+        <div class="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          Each row is sent to the API sequentially so you can trace failures row by row instead of masking them in a bulk request.
+        </div>
+
+        <div id="batchError" class="mt-5 hidden rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"></div>
+
+        <div id="batchProgress" class="mt-5 hidden rounded-2xl border border-blue-200 bg-blue-50 p-4">
+          <div class="flex items-center justify-between text-sm font-semibold text-blue-700">
+            <span id="progressLabel">Processing 0 of 0</span>
+            <span id="progressPercent">0%</span>
+          </div>
+          <div class="mt-3 h-2 overflow-hidden rounded-full bg-blue-100">
+            <div id="progressBar" class="h-full w-0 rounded-full bg-blue-600 transition-all"></div>
+          </div>
+        </div>
+
+        <div id="batchSummary" class="mt-5 hidden rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+          <div class="grid grid-cols-3 gap-3 text-center">
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-emerald-700">Rows</div>
+              <div id="summaryRows" class="mt-1 text-2xl font-bold text-emerald-900">0</div>
+            </div>
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-emerald-700">Success</div>
+              <div id="summarySuccess" class="mt-1 text-2xl font-bold text-emerald-900">0</div>
+            </div>
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-emerald-700">Errors</div>
+              <div id="summaryErrors" class="mt-1 text-2xl font-bold text-emerald-900">0</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/50">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-bold">Results Table</h2>
+          <p class="text-sm text-slate-500">Each processed row includes key request values, tax outputs, and any warnings returned by the backend.</p>
+        </div>
+      </div>
+
+      <div class="table-shell mt-4 overflow-x-auto">
+        <table class="min-w-full border-separate border-spacing-0 text-left text-sm">
+          <thead class="sticky top-0">
+            <tr class="bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Row</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">First Name</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Last Name</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Frequency</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Basis</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Tax Code</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Gross</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Tax Free</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Taxable Gross</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Taxable Pay</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Tax Final</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Net</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Effective %</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Implied Annual</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Reclaim</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Refund?</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Emergency?</th>
+              <th class="whitespace-nowrap border-b border-slate-200 px-3 py-3">Warnings / Error</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody">
+            <tr id="emptyState">
+              <td colspan="18" class="px-3 py-8 text-center text-sm text-slate-400">No rows processed yet.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script src="{% static 'js/batch_simulator.js' %}" defer></script>
+</body>
+</html>

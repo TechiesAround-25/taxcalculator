@@ -1,0 +1,81 @@
+# ----------------------
+# Python
+# ----------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# ----------------------
+# Django
+# ----------------------
+*.log
+*.pot
+*.pyc
+db.sqlite3
+db.sqlite3-journal
+
+# Static & Media (optional - keep if generated)
+staticfiles/
+media/
+
+# ----------------------
+# Environment Variables
+# ----------------------
+.env
+.env.*
+
+# ----------------------
+# macOS
+# ----------------------
+.DS_Store
+__MACOSX/
+
+# ----------------------
+# Windows
+# ----------------------
+Thumbs.db
+desktop.ini
+
+# ----------------------
+# IDE / Editor
+# ----------------------
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# ----------------------
+# Archives
+# ----------------------
+*.tar.gz
+*.zip
+*.rar
+
+# ----------------------
+# Logs
+# ----------------------
+*.log
+
+# ----------------------
+# Temporary Files
+# ----------------------
+*.swp
+*.tmp
+
+# ----------------------
+# Project Specific
+# ----------------------
+Bulk-Input.csv
+postman/
+
+# ----------------------
+# Keep these tracked
+# ----------------------
+!README.md
+!requirements.txt
+!manage.py

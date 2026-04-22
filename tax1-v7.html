@@ -1,0 +1,1001 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Advanced SSAS Pension PAYE Simulator (HMRC-aligned)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] }
+    }
+  }
+}
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* Smooth slide for collapsible panels */
+  .ytd-panel { max-height: 0; overflow: hidden; transition: max-height 0.35s ease, opacity 0.3s ease; opacity: 0; }
+  .ytd-panel.open { max-height: 400px; opacity: 1; }
+  /* Pulse badge */
+  @keyframes softPulse { 0%,100%{opacity:1} 50%{opacity:.7} }
+  .badge-pulse { animation: softPulse 2s ease-in-out infinite; }
+  /* Result row hover */
+  .result-row { transition: background-color 0.15s ease; }
+  .result-row:hover { background-color: rgba(59,130,246,0.06); }
+  /* Section divider */
+  .section-divider { border-top: 1px dashed #e2e8f0; margin: 8px 0; }
+</style>
+</head>
+
+<body class="bg-gradient-to-br from-slate-100 to-slate-200 min-h-screen p-4 md:p-10 font-sans">
+
+<div class="max-w-2xl mx-auto">
+
+  <!-- Header -->
+  <div class="mb-6 flex items-center gap-3">
+    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-200">
+      <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+    </div>
+    <div>
+      <h1 class="text-2xl font-bold text-slate-800">SSAS Pension PAYE Simulator</h1>
+      <p class="text-xs text-slate-400">Advanced HMRC-aligned · Scottish bands · Non-Cumulative & Cumulative · PCLS</p>
+    </div>
+  </div>
+
+  <!-- Main card -->
+  <div class="bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
+    <div class="p-6 md:p-8 space-y-5">
+
+      <!-- Row 1: Pension Withdrawal + Frequency -->
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label for="gross" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Pension Withdrawal (£)</label>
+          <input id="gross" type="number" step="0.01" min="0"
+            class="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all placeholder:text-slate-300"
+            placeholder="e.g. 50000"/>
+        </div>
+        <div>
+          <label for="frequency" class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Pay Frequency</label>
+          <select id="frequency" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all bg-white">
+            <option value="12">Monthly</option>
+            <option value="52">Weekly</option>
+            <option value="1">Annual</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Row 2: PCLS Tax-Free Portion -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Tax-Free Portion (PCLS)</label>
+        <div class="flex gap-2">
+          <div class="flex-1 relative">
+            <input id="taxFreeAmount" type="number" step="0.01" min="0" placeholder="0.00"
+              class="w-full border border-slate-200 rounded-lg p-2.5 pr-8 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"/>
+            <span id="taxFreeUnitLabel" class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-medium">£</span>
+          </div>
+          <div class="flex rounded-lg border border-slate-200 overflow-hidden flex-shrink-0">
+            <button type="button" id="btnTfPound" onclick="setTaxFreeMode('pound')"
+              class="px-3 py-2 text-xs font-semibold transition-all focus:outline-none bg-blue-600 text-white">£</button>
+            <button type="button" id="btnTfPercent" onclick="setTaxFreeMode('percent')"
+              class="px-3 py-2 text-xs font-semibold transition-all focus:outline-none bg-white text-slate-500 hover:bg-slate-50">%</button>
+          </div>
+        </div>
+        <p class="mt-1 text-[11px] text-slate-400">Pension Commencement Lump Sum — typically 25% of fund value, tax-free</p>
+      </div>
+
+      <!-- Tax Code (searchable) -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Tax Code</label>
+        <input type="hidden" id="taxCode" value="">
+        <div class="relative" id="taxCodeWrapper">
+          <input type="text" id="taxCodeSearch" placeholder="Search tax code..." autocomplete="off"
+            class="w-full border border-slate-200 rounded-lg p-2.5 pr-10 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"/>
+          <button type="button" id="taxCodeToggle" tabindex="-1"
+            class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600">
+            <svg class="w-4 h-4 transition-transform" id="taxCodeChevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <ul id="taxCodeList"
+            class="hidden absolute z-50 mt-1 w-full max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-xl"></ul>
+        </div>
+      </div>
+
+      <!-- Basis toggle -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Calculation Basis</label>
+        <div class="flex rounded-lg border border-slate-200 overflow-hidden">
+          <button type="button" id="btnNonCumulative" onclick="setBasis('noncumulative')"
+            class="flex-1 py-2.5 px-4 text-sm font-medium transition-all focus:outline-none bg-blue-600 text-white">
+            Non-Cumulative <span class="text-[10px] opacity-75">(M1/W1)</span>
+          </button>
+          <button type="button" id="btnCumulative" onclick="setBasis('cumulative')"
+            class="flex-1 py-2.5 px-4 text-sm font-medium transition-all focus:outline-none bg-white text-slate-600 hover:bg-slate-50">
+            Cumulative
+          </button>
+        </div>
+      </div>
+
+      <!-- YTD Fields (cumulative only) -->
+      <div id="ytdPanel" class="ytd-panel">
+        <div class="bg-blue-50/50 border border-blue-100 rounded-xl p-4 space-y-3">
+          <p class="text-[11px] font-semibold text-blue-500 uppercase tracking-wider flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Year-to-Date Data
+          </p>
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label for="ytdGross" class="block text-[11px] font-medium text-slate-500 mb-1">YTD Gross (£)</label>
+              <input id="ytdGross" type="number" step="0.01" min="0" placeholder="0.00"
+                class="w-full border border-slate-200 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"/>
+            </div>
+            <div>
+              <label for="ytdTax" class="block text-[11px] font-medium text-slate-500 mb-1">YTD Tax (£)</label>
+              <input id="ytdTax" type="number" step="0.01" min="0" placeholder="0.00"
+                class="w-full border border-slate-200 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"/>
+            </div>
+            <div>
+              <label for="periodNumber" class="block text-[11px] font-medium text-slate-500 mb-1">Current Period No.</label>
+              <input id="periodNumber" type="number" min="1" max="52" placeholder="1"
+                class="w-full border border-slate-200 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"/>
+              <p class="mt-1 text-[10px] text-slate-400">The pay period of this payment (e.g. Month 3 if this is the 3rd payment)</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SSAS checkbox -->
+      <div class="flex items-start gap-2.5">
+        <input id="ssasCheck" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"/>
+        <label for="ssasCheck" class="text-sm text-slate-600 leading-tight">
+          First / Ad-hoc Pension Payment <span class="text-[10px] text-slate-400">(SSAS)</span>
+        </label>
+      </div>
+
+      <!-- Only income checkbox -->
+      <div class="flex items-start gap-2.5">
+        <input id="onlyIncomeCheck" type="checkbox" checked class="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"/>
+        <label for="onlyIncomeCheck" class="text-sm text-slate-600 leading-tight">
+          This is my only income this year
+        </label>
+      </div>
+
+      <!-- Calculate button -->
+      <button onclick="calculateTax()"
+        class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3 px-6 rounded-xl shadow-lg shadow-blue-200/50 transition-all active:scale-[0.98]">
+        Calculate
+      </button>
+
+      <!-- Validation error -->
+      <div id="validationError" class="hidden p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 flex items-start gap-2">
+        <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+        <span id="validationMsg"></span>
+      </div>
+
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!-- Results Panel                                             -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div id="result" class="hidden border-t border-slate-100">
+
+      <!-- Mode badge -->
+      <div class="px-6 pt-5 pb-2 flex items-center gap-2 flex-wrap">
+        <span id="modeBadge" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold badge-pulse"></span>
+        <span id="codeUsed" class="text-xs text-slate-400"></span>
+        <span id="taperBadge" class="hidden inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-700">TAPER APPLIED</span>
+        <span id="scottishBadge" class="hidden inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-100 text-sky-700">SCOTTISH RATES</span>
+      </div>
+
+      <!-- Implied Annual Income -->
+      <div id="impliedAnnualBox" class="hidden mx-6 mb-3 p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-sm text-indigo-700 flex items-start gap-2">
+        <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span id="impliedAnnualLabel">HMRC assumes annual income of <strong>£<span id="impliedAnnual">0</span></strong> based on this payment</span>
+      </div>
+
+      <!-- ── Non-cumulative results ────────────────────────────── -->
+      <div id="resultNonCum" class="px-6 pb-5 space-y-1">
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">Tax-Free Portion (PCLS)</span>
+          <span class="text-sm font-semibold text-slate-700">£<span id="r_pcls">0.00</span></span>
+        </div>
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">Taxable Withdrawal</span>
+          <span class="text-sm font-semibold text-slate-700">£<span id="r_taxableGross">0.00</span></span>
+        </div>
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">Period Allowance</span>
+          <span class="text-sm font-semibold text-slate-700">£<span id="r_allowance">0.00</span></span>
+        </div>
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">Taxable Pay (after allowance)</span>
+          <span class="text-sm font-semibold text-slate-700">£<span id="r_taxable">0.00</span></span>
+        </div>
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">Income Tax (before safeguard)</span>
+          <span class="text-sm font-semibold text-slate-700">£<span id="r_taxBeforeCap">0.00</span></span>
+        </div>
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">50% Safeguard Limit</span>
+          <span class="text-sm font-semibold text-slate-700">£<span id="r_safeguardLimit">0.00</span></span>
+        </div>
+        <div class="result-row flex justify-between py-2 px-2 rounded bg-slate-50 border border-slate-100 mt-1">
+          <span class="text-sm font-semibold text-slate-700">Income Tax Deducted</span>
+          <span class="text-sm font-bold text-blue-700">£<span id="r_tax">0.00</span></span>
+        </div>
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">Effective Tax Rate</span>
+          <span class="text-sm font-semibold text-slate-700"><span id="r_effectiveRate">0.00</span>%</span>
+        </div>
+        <div class="result-row flex justify-between py-2 px-2 rounded bg-green-50 border border-green-100 mt-1">
+          <span class="text-sm font-semibold text-green-700">Net Pension Received</span>
+          <span class="text-sm font-bold text-green-700">£<span id="r_net">0.00</span></span>
+        </div>
+      </div>
+
+      <!-- ── SSAS Reclaim Estimation (non-cumulative only) ─────── -->
+      <div id="reclaimPanel" class="hidden mx-6 mb-4">
+        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-2">
+          <p class="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Tax Reclaim Estimation
+          </p>
+          <div class="space-y-1">
+            <div class="flex justify-between text-sm">
+              <span class="text-slate-500">Estimated Annual Income</span>
+              <span class="font-semibold text-slate-700">£<span id="re_annualIncome">0.00</span></span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span class="text-slate-500">True Annual Tax (on full year)</span>
+              <span class="font-semibold text-slate-700">£<span id="re_trueAnnualTax">0.00</span></span>
+            </div>
+            <div class="flex justify-between text-sm">
+              <span class="text-slate-500">Correct Tax This Period</span>
+              <span class="font-semibold text-slate-700">£<span id="re_truePeriodTax">0.00</span></span>
+            </div>
+            <div class="flex justify-between text-sm pt-1 border-t border-emerald-200">
+              <span class="font-semibold text-emerald-700">Estimated Overpaid Tax (Reclaim)</span>
+              <span class="font-bold text-emerald-700">£<span id="re_reclaim">0.00</span></span>
+            </div>
+          </div>
+          <p class="text-[11px] text-emerald-600 italic mt-1">This is an estimate. Actual reclaim depends on your total annual income and allowances. Use HMRC form P55 or P50Z to reclaim.</p>
+          <div id="otherIncomeWarning" class="hidden mt-2 p-2 bg-amber-50 border border-amber-100 rounded-lg text-[11px] text-amber-700">⚠️ Estimate assumes no other income. Actual reclaim may differ if you have additional earnings.</div>
+        </div>
+      </div>
+
+      <!-- ── Cumulative results ────────────────────────────────── -->
+      <div id="resultCum" class="hidden px-6 pb-5 space-y-1">
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">Tax-Free Portion (PCLS)</span>
+          <span class="text-sm font-semibold text-slate-700">£<span id="rc_pcls">0.00</span></span>
+        </div>
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">Taxable Withdrawal</span>
+          <span class="text-sm font-semibold text-slate-700">£<span id="rc_taxableGross">0.00</span></span>
+        </div>
+        <div class="section-divider"></div>
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">Cumulative Gross</span>
+          <span class="text-sm font-semibold text-slate-700">£<span id="rc_cumGross">0.00</span></span>
+        </div>
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">Cumulative Allowance</span>
+          <span class="text-sm font-semibold text-slate-700">£<span id="rc_cumAllowance">0.00</span></span>
+        </div>
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">Cumulative Taxable</span>
+          <span class="text-sm font-semibold text-slate-700">£<span id="rc_cumTaxable">0.00</span></span>
+        </div>
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">Total Tax Due to Date</span>
+          <span class="text-sm font-semibold text-slate-700">£<span id="rc_totalTaxDue">0.00</span></span>
+        </div>
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">YTD Tax Already Paid</span>
+          <span class="text-sm font-semibold text-slate-700">£<span id="rc_ytdPaid">0.00</span></span>
+        </div>
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">Income Tax (before safeguard)</span>
+          <span class="text-sm font-semibold text-slate-700">£<span id="rc_taxBeforeCap">0.00</span></span>
+        </div>
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">50% Safeguard Limit</span>
+          <span class="text-sm font-semibold text-slate-700">£<span id="rc_safeguardLimit">0.00</span></span>
+        </div>
+        <div class="result-row flex justify-between py-2 px-2 rounded bg-slate-50 border border-slate-100 mt-1">
+          <span id="rc_taxLabel" class="text-sm font-semibold text-slate-700">Income Tax Deducted</span>
+          <span class="text-sm font-bold text-blue-700">£<span id="rc_tax">0.00</span></span>
+        </div>
+        <div class="result-row flex justify-between py-1.5 px-2 rounded">
+          <span class="text-sm text-slate-500">Effective Tax Rate</span>
+          <span class="text-sm font-semibold text-slate-700"><span id="rc_effectiveRate">0.00</span>%</span>
+        </div>
+        <div class="result-row flex justify-between py-2 px-2 rounded bg-green-50 border border-green-100 mt-1">
+          <span class="text-sm font-semibold text-green-700">Net Pension Received</span>
+          <span class="text-sm font-bold text-green-700">£<span id="rc_net">0.00</span></span>
+        </div>
+      </div>
+
+      <!-- PCLS >25% soft warning -->
+      <div id="pclsWarning" class="hidden mx-6 mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-xl text-sm text-yellow-700 flex items-start gap-2">
+        <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span>Tax-free lump sum (PCLS) is typically up to <strong>25% of pension value</strong>. Please verify your entitlement.</span>
+      </div>
+
+      <!-- Safeguard warning -->
+      <div id="safeguardWarning" class="hidden mx-6 mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700 flex items-start gap-2">
+        <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+        <span>Income tax was capped at 50% of gross pay — <strong>HMRC K-code safeguard applied</strong></span>
+      </div>
+
+      <!-- Emergency tax warning -->
+      <div id="emergencyWarning" class="hidden mx-6 mb-4 p-3 bg-orange-50 border border-orange-200 rounded-xl text-sm text-orange-700 flex items-start gap-2">
+        <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+        <span>This payment is likely taxed using <strong>emergency PAYE</strong>. HMRC assumes this is a regular payment, which may result in significantly higher tax deductions. You can reclaim overpaid tax from HMRC after the tax year.</span>
+      </div>
+
+      <!-- SSAS warning -->
+      <div id="ssasWarning" class="hidden mx-6 mb-4 p-3 bg-purple-50 border border-purple-200 rounded-xl text-sm text-purple-700 flex items-start gap-2">
+        <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span>This calculation assumes regular payments under PAYE. <strong>SSAS pension withdrawals are often taxed on an emergency basis.</strong> Actual liability may differ and overpaid tax can be reclaimed from HMRC.</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <p class="text-center text-[11px] text-slate-400 mt-6">2024-25 HMRC tax bands · For illustration only · Not financial advice</p>
+
+</div>
+
+<script>
+
+// ══════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════
+
+let currentBasis = "noncumulative";
+let taxFreeMode = "pound"; // "pound" or "percent"
+
+function setBasis(basis) {
+  currentBasis = basis;
+  const btnNC = document.getElementById("btnNonCumulative");
+  const btnC  = document.getElementById("btnCumulative");
+  const panel = document.getElementById("ytdPanel");
+
+  if (basis === "cumulative") {
+    btnC.className  = "flex-1 py-2.5 px-4 text-sm font-medium transition-all focus:outline-none bg-blue-600 text-white";
+    btnNC.className = "flex-1 py-2.5 px-4 text-sm font-medium transition-all focus:outline-none bg-white text-slate-600 hover:bg-slate-50";
+    panel.classList.add("open");
+  } else {
+    btnNC.className = "flex-1 py-2.5 px-4 text-sm font-medium transition-all focus:outline-none bg-blue-600 text-white";
+    btnC.className  = "flex-1 py-2.5 px-4 text-sm font-medium transition-all focus:outline-none bg-white text-slate-600 hover:bg-slate-50";
+    panel.classList.remove("open");
+  }
+  document.getElementById("result").classList.add("hidden");
+}
+
+function setTaxFreeMode(mode) {
+  taxFreeMode = mode;
+  const btnP = document.getElementById("btnTfPound");
+  const btnPct = document.getElementById("btnTfPercent");
+  const unitLabel = document.getElementById("taxFreeUnitLabel");
+
+  if (mode === "percent") {
+    btnPct.className = "px-3 py-2 text-xs font-semibold transition-all focus:outline-none bg-blue-600 text-white";
+    btnP.className   = "px-3 py-2 text-xs font-semibold transition-all focus:outline-none bg-white text-slate-500 hover:bg-slate-50";
+    unitLabel.textContent = "%";
+    document.getElementById("taxFreeAmount").placeholder = "e.g. 25";
+  } else {
+    btnP.className   = "px-3 py-2 text-xs font-semibold transition-all focus:outline-none bg-blue-600 text-white";
+    btnPct.className = "px-3 py-2 text-xs font-semibold transition-all focus:outline-none bg-white text-slate-500 hover:bg-slate-50";
+    unitLabel.textContent = "£";
+    document.getElementById("taxFreeAmount").placeholder = "0.00";
+  }
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// SORTED TAX CODES (unchanged)
+// ══════════════════════════════════════════════════════════════
+
+const TAX_CODES = [
+  "0T", "BR", "D0", "D1", "SD1", "SD2",
+  "3L", "19L", "32L", "60L", "179L", "184L", "244L", "323L", "331L", "345L",
+  "611L", "640L", "698L", "757L", "879L", "943L", "1171L", "1197T", "1200L", "1232L", "1236L", "1239L", "1257L", "1282L", "1957L",
+  "27T", "48T", "57T", "777T", "1168T", "1178T", "1269T",
+  "K18", "K44", "K48", "K63", "K100", "K104", "K181", "K324", "K390", "K455", "K457",
+  "K499", "K539", "K540", "K541", "K544", "K560", "K621", "K631", "K740", "K1008", "K2021", "K3920", "K6684",
+  "C0T", "C65L", "C207L", "C521T", "C553T", "C1257L", "C1417T", "CBR", "CD0", "CD1",
+  "S0T", "S60L", "SBR", "SK372", "SK432", "SK510",
+  "#N/A"
+];
+
+
+// ══════════════════════════════════════════════════════════════
+// SEARCHABLE DROPDOWN (unchanged)
+// ══════════════════════════════════════════════════════════════
+
+(function initSearchableDropdown() {
+  const searchInput = document.getElementById("taxCodeSearch");
+  const hiddenInput = document.getElementById("taxCode");
+  const list        = document.getElementById("taxCodeList");
+  const toggle      = document.getElementById("taxCodeToggle");
+  const chevron     = document.getElementById("taxCodeChevron");
+  let highlightIdx  = -1;
+
+  function renderList(filter = "") {
+    const q = filter.toUpperCase();
+    const filtered = TAX_CODES.filter(c => c.toUpperCase().includes(q));
+    list.innerHTML = "";
+    highlightIdx = -1;
+
+    if (filtered.length === 0) {
+      list.innerHTML = '<li class="px-3 py-2 text-sm text-slate-400 italic">No matches</li>';
+      return;
+    }
+
+    const groups = {
+      "Flat Rate": [], "L Codes": [], "T Codes": [], "K Codes": [],
+      "C Prefix": [], "S Prefix": [], "Other": []
+    };
+
+    filtered.forEach(code => {
+      if (["0T","BR","D0","D1","SD1","SD2"].includes(code)) groups["Flat Rate"].push(code);
+      else if (/^\d+L$/.test(code)) groups["L Codes"].push(code);
+      else if (/^\d+T$/.test(code)) groups["T Codes"].push(code);
+      else if (/^K\d+$/.test(code)) groups["K Codes"].push(code);
+      else if (/^C/.test(code)) groups["C Prefix"].push(code);
+      else if (/^S/.test(code)) groups["S Prefix"].push(code);
+      else groups["Other"].push(code);
+    });
+
+    for (const [label, codes] of Object.entries(groups)) {
+      if (codes.length === 0) continue;
+      const header = document.createElement("li");
+      header.className = "px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 bg-slate-50 select-none sticky top-0";
+      header.textContent = label;
+      list.appendChild(header);
+
+      codes.forEach(code => {
+        const li = document.createElement("li");
+        li.className = "px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 hover:text-blue-700 transition-colors";
+        li.dataset.value = code;
+        li.textContent = code;
+        li.addEventListener("mousedown", (e) => { e.preventDefault(); selectCode(code); });
+        list.appendChild(li);
+      });
+    }
+  }
+
+  function selectCode(code) { hiddenInput.value = code; searchInput.value = code; closeList(); }
+  function openList()  { list.classList.remove("hidden"); chevron.style.transform = "rotate(180deg)"; renderList(searchInput.value); }
+  function closeList() { list.classList.add("hidden"); chevron.style.transform = ""; }
+  function isOpen()    { return !list.classList.contains("hidden"); }
+
+  searchInput.addEventListener("focus", openList);
+  searchInput.addEventListener("input", () => { if (!isOpen()) openList(); renderList(searchInput.value); });
+  searchInput.addEventListener("blur", () => { setTimeout(closeList, 150); });
+  toggle.addEventListener("click", () => { if (isOpen()) { closeList(); searchInput.blur(); } else { searchInput.focus(); } });
+
+  searchInput.addEventListener("keydown", (e) => {
+    const items = list.querySelectorAll("li[data-value]");
+    if (!items.length) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); highlightIdx = Math.min(highlightIdx + 1, items.length - 1); updateHighlight(items); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); highlightIdx = Math.max(highlightIdx - 1, 0); updateHighlight(items); }
+    else if (e.key === "Enter") { e.preventDefault(); if (highlightIdx >= 0 && highlightIdx < items.length) selectCode(items[highlightIdx].dataset.value); }
+    else if (e.key === "Escape") { closeList(); searchInput.blur(); }
+  });
+
+  function updateHighlight(items) {
+    items.forEach((el, i) => {
+      if (i === highlightIdx) { el.classList.add("bg-blue-100", "text-blue-700"); el.scrollIntoView({ block: "nearest" }); }
+      else { el.classList.remove("bg-blue-100", "text-blue-700"); }
+    });
+  }
+
+  selectCode(TAX_CODES[0]);
+  renderList();
+})();
+
+
+// ══════════════════════════════════════════════════════════════
+// HELPERS (unchanged + new)
+// ══════════════════════════════════════════════════════════════
+
+function showError(msg) {
+  document.getElementById("validationMsg").textContent = msg;
+  document.getElementById("validationError").classList.remove("hidden");
+  document.getElementById("result").classList.add("hidden");
+}
+function hideError() {
+  document.getElementById("validationError").classList.add("hidden");
+}
+function val(id) { return parseFloat(document.getElementById(id).value) || 0; }
+function setText(id, v) { document.getElementById(id).textContent = v.toFixed(2); }
+function show(id) { document.getElementById(id).classList.remove("hidden"); }
+function hide(id) { document.getElementById(id).classList.add("hidden"); }
+
+
+// ══════════════════════════════════════════════════════════════
+// TAX CODE PARSER (unchanged)
+// ══════════════════════════════════════════════════════════════
+
+function parseTaxCode(rawCode) {
+  const result = { annualAllowance: 0, isKCode: false, isFlatRate: false, flatRate: 0, isScottish: false, basisOverride: null };
+
+  // Strip M1/W1 suffix to detect basis override
+  let code = rawCode;
+  if (/\s*(M1|W1|X)$/i.test(code)) {
+    result.basisOverride = "noncumulative";
+    code = code.replace(/\s*(M1|W1|X)$/i, "");
+  }
+
+  // Detect Scottish prefix
+  if (/^S/i.test(code) && code !== "SD1" && code !== "SD2") {
+    result.isScottish = true;
+  }
+
+  const clean = code.replace(/^[CS]/, "");
+
+  if (["BR","CBR","SBR"].includes(code))      { result.isFlatRate = true; result.flatRate = 0.20; }
+  else if (["D0","CD0"].includes(code))        { result.isFlatRate = true; result.flatRate = 0.40; }
+  else if (["D1","CD1"].includes(code))        { result.isFlatRate = true; result.flatRate = 0.45; }
+  else if (code === "SD1")                     { result.isFlatRate = true; result.flatRate = 0.41; }
+  else if (code === "SD2")                     { result.isFlatRate = true; result.flatRate = 0.46; }
+  else if (clean === "0T")                     { result.annualAllowance = 0; }
+  else if (clean.startsWith("K")) {
+    const num = parseInt(clean.substring(1));
+    result.isKCode = true;
+    result.annualAllowance = -(num * 10);
+  }
+  else if (/[0-9]+[LT]$/.test(clean)) {
+    result.annualAllowance = parseInt(clean) * 10;
+  }
+  else {
+    result.annualAllowance = 12570;
+  }
+  return result;
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// BAND TAX (unchanged)
+// ══════════════════════════════════════════════════════════════
+
+function bandTax(periodIncome, freq) {
+  const band1 = 37700 / freq;
+  const band2 = 125140 / freq;
+  let tax = 0;
+
+  if (periodIncome <= band1) {
+    tax = periodIncome * 0.20;
+  } else if (periodIncome <= band2) {
+    tax = band1 * 0.20 + (periodIncome - band1) * 0.40;
+  } else {
+    tax = band1 * 0.20 + (band2 - band1) * 0.40 + (periodIncome - band2) * 0.45;
+  }
+  return tax;
+}
+
+function bandTaxCumulative(cumulativeTaxable, periodNo, totalPeriods) {
+  // HMRC PAYE Spec Definition 9: Thresholds are pro-rated by n/totalPeriods
+  const p = periodNo / totalPeriods;
+  const band1 = 37700 * p;
+  const band2 = 125140 * p;
+  let tax = 0;
+
+  if (cumulativeTaxable <= band1) {
+    tax = cumulativeTaxable * 0.20;
+  } else if (cumulativeTaxable <= band2) {
+    tax = band1 * 0.20 + (cumulativeTaxable - band1) * 0.40;
+  } else {
+    tax = band1 * 0.20 + (band2 - band1) * 0.40 + (cumulativeTaxable - band2) * 0.45;
+  }
+  return tax;
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// SCOTTISH TAX BANDS (2024-25) — 6 bands
+// Starter 19%: £0-£2,306  | Basic 20%: £2,307-£13,991
+// Intermediate 21%: £13,992-£31,092 | Higher 42%: £31,093-£62,430
+// Advanced 45%: £62,431-£125,140 | Top 48%: £125,141+
+// ══════════════════════════════════════════════════════════════
+
+function bandTaxScottish(periodIncome, freq) {
+  const b = [2306/freq, 13991/freq, 31092/freq, 62430/freq, 125140/freq];
+  let tax = 0, prev = 0;
+  const rates = [0.19, 0.20, 0.21, 0.42, 0.45, 0.48];
+
+  for (let i = 0; i < rates.length; i++) {
+    const cap = i < b.length ? b[i] : Infinity;
+    if (periodIncome <= cap) { tax += (periodIncome - prev) * rates[i]; break; }
+    tax += (cap - prev) * rates[i];
+    prev = cap;
+  }
+  return tax;
+}
+
+function bandTaxScottishCumulative(cumulativeTaxable, periodNo, totalPeriods) {
+  // HMRC PAYE Spec Definition 9.1: Scottish Thresholds are pro-rated by n/totalPeriods
+  const p = periodNo / totalPeriods;
+  const b = [2306*p, 13991*p, 31092*p, 62430*p, 125140*p];
+  let tax = 0, prev = 0;
+  const rates = [0.19, 0.20, 0.21, 0.42, 0.45, 0.48];
+
+  for (let i = 0; i < rates.length; i++) {
+    const cap = i < b.length ? b[i] : Infinity;
+    if (cumulativeTaxable <= cap) { tax += (cumulativeTaxable - prev) * rates[i]; break; }
+    tax += (cap - prev) * rates[i];
+    prev = cap;
+  }
+  return tax;
+}
+
+// Router: pick the right band function
+function bandTaxRoute(income, freq, isScottish) {
+  return isScottish ? bandTaxScottish(income, freq) : bandTax(income, freq);
+}
+function bandTaxCumulativeRoute(income, periodNo, totalPeriods, isScottish) {
+  return isScottish ? bandTaxScottishCumulative(income, periodNo, totalPeriods) : bandTaxCumulative(income, periodNo, totalPeriods);
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// NEW: Personal Allowance Taper (£100k+)
+// ══════════════════════════════════════════════════════════════
+
+function taperAllowance(annualAllowance, estimatedAnnualIncome, parsed) {
+  // Taper does NOT apply to flat-rate or K-codes
+  if (parsed.isFlatRate || parsed.isKCode) return annualAllowance;
+  if (annualAllowance <= 0) return annualAllowance;
+
+  if (estimatedAnnualIncome > 100000) {
+    const reduction = (estimatedAnnualIncome - 100000) / 2;
+    return Math.max(0, annualAllowance - reduction);
+  }
+  return annualAllowance;
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// NEW: Compute PCLS tax-free amount
+// ══════════════════════════════════════════════════════════════
+
+function computeTaxFree(gross) {
+  const rawVal = val("taxFreeAmount");
+  if (rawVal <= 0) return 0;
+
+  if (taxFreeMode === "percent") {
+    return Math.min(gross, gross * (Math.min(rawVal, 100) / 100));
+  }
+  return Math.min(gross, rawVal);
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// MAIN ENTRY POINT
+// ══════════════════════════════════════════════════════════════
+
+function calculateTax() {
+  hideError();
+
+  const gross  = val("gross");
+  const freq   = parseInt(document.getElementById("frequency").value);
+  const code   = document.getElementById("taxCode").value.toUpperCase();
+  const isSSAS = document.getElementById("ssasCheck").checked;
+  const isOnlyIncome = document.getElementById("onlyIncomeCheck").checked;
+
+  // ── Validation ──────────────────────────────────────────
+  if (!gross || gross <= 0) { showError("Please enter a valid pension withdrawal amount."); return; }
+  if (!code) { showError("Please select a tax code."); return; }
+
+  // PCLS validation
+  const taxFreeAmount = computeTaxFree(gross);
+  if (val("taxFreeAmount") > 0 && taxFreeMode === "pound" && val("taxFreeAmount") > gross) {
+    showError("Tax-free amount cannot exceed the pension withdrawal."); return;
+  }
+
+  // taxableGross = gross minus tax-free PCLS
+  const taxableGross = Math.max(0, gross - taxFreeAmount);
+
+  const parsed = parseTaxCode(code);
+
+  // M1/W1/X suffix overrides the UI basis selection
+  let effectiveBasis = currentBasis;
+  if (parsed.basisOverride) {
+    effectiveBasis = parsed.basisOverride;
+    // Auto-switch the UI to reflect
+    setBasis(effectiveBasis);
+  }
+
+  if (effectiveBasis === "noncumulative") {
+    calcNonCumulative(gross, taxableGross, taxFreeAmount, freq, code, parsed, isSSAS, isOnlyIncome);
+  } else {
+    calcCumulative(gross, taxableGross, taxFreeAmount, freq, code, parsed, isSSAS, isOnlyIncome);
+  }
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// NON-CUMULATIVE (M1/W1) — extended with PCLS, taper, reclaim
+// ══════════════════════════════════════════════════════════════
+
+function calcNonCumulative(gross, taxableGross, taxFreeAmount, freq, code, parsed, isSSAS, isOnlyIncome) {
+  let allowance = 0, taxable = 0, tax = 0;
+  let taperApplied = false;
+
+  // Estimate annual income (for reclaim estimation and implied annual display only)
+  const estimatedAnnualIncome = taxableGross * freq;
+
+  // HMRC Rule: Personal allowance taper is NOT applied in Non-Cumulative (M1/W1) mode.
+  // Use the un-tapered annual allowance for the period calculation.
+  const adjustedAnnualAllowance = parsed.annualAllowance;
+
+  if (parsed.isFlatRate) {
+    taxable = taxableGross;
+    tax = taxableGross * parsed.flatRate;
+  } else if (parsed.isKCode) {
+    const periodAdd = Math.abs(parsed.annualAllowance) / freq;
+    allowance = -periodAdd;
+    taxable = taxableGross + periodAdd;
+    tax = bandTaxRoute(taxable, freq, parsed.isScottish);
+  } else {
+    allowance = adjustedAnnualAllowance / freq;
+    taxable = Math.max(0, taxableGross - allowance);
+    tax = bandTaxRoute(taxable, freq, parsed.isScottish);
+  }
+
+  // 50% safeguard for K codes
+  const taxBeforeCap = tax;
+  const safeguardLimit = taxableGross * 0.50;
+  let wasCapped = false;
+  if (parsed.isKCode && tax > safeguardLimit) { tax = safeguardLimit; wasCapped = true; }
+
+  // Ensure non-negative (non-cumulative never refunds)
+  tax = Math.max(0, tax);
+
+  const net = gross - tax;
+  const effectiveRate = gross > 0 ? (tax / gross) * 100 : 0;
+
+  // ── Display ────────────────────────────────────────────
+  setText("r_pcls", taxFreeAmount);
+  setText("r_taxableGross", taxableGross);
+  setText("r_allowance", allowance);
+  setText("r_taxable", taxable);
+  setText("r_taxBeforeCap", taxBeforeCap);
+  setText("r_safeguardLimit", safeguardLimit);
+  setText("r_tax", tax);
+  setText("r_effectiveRate", effectiveRate);
+  setText("r_net", net);
+
+  // ── Implied Annual Income ──────────────────────────────
+  // Value is set inside showResults after label rebuild
+
+  // ── SSAS Reclaim Estimation ────────────────────────────
+  if (isSSAS && currentBasis === "noncumulative") {
+    let trueAnnualTaxable;
+    if (parsed.isFlatRate) {
+      trueAnnualTaxable = estimatedAnnualIncome;
+    } else if (parsed.isKCode) {
+      trueAnnualTaxable = estimatedAnnualIncome + Math.abs(parsed.annualAllowance);
+    } else {
+      trueAnnualTaxable = Math.max(0, estimatedAnnualIncome - adjustedAnnualAllowance);
+    }
+
+    const trueAnnualTax = parsed.isFlatRate
+      ? trueAnnualTaxable * parsed.flatRate
+      : bandTaxRoute(trueAnnualTaxable, 1, parsed.isScottish);
+
+    const truePeriodTax = Math.max(0, trueAnnualTax / freq);
+    const estimatedReclaim = Math.max(0, tax - truePeriodTax);
+
+    setText("re_annualIncome", estimatedAnnualIncome);
+    setText("re_trueAnnualTax", trueAnnualTax);
+    setText("re_truePeriodTax", truePeriodTax);
+    setText("re_reclaim", estimatedReclaim);
+    show("reclaimPanel");
+
+    // Other income warning
+    if (!isOnlyIncome) show("otherIncomeWarning"); else hide("otherIncomeWarning");
+  } else {
+    hide("reclaimPanel");
+    hide("otherIncomeWarning");
+  }
+
+  showResults("noncumulative", code, wasCapped, isSSAS, gross, taperApplied, parsed.isScottish, taxFreeAmount, estimatedAnnualIncome);
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// CUMULATIVE — extended with PCLS + taper
+// ══════════════════════════════════════════════════════════════
+
+function calcCumulative(gross, taxableGross, taxFreeAmount, freq, code, parsed, isSSAS, isOnlyIncome) {
+  const ytdGross = val("ytdGross");
+  const ytdTax   = val("ytdTax");
+  const periodNo = parseInt(document.getElementById("periodNumber").value) || 0;
+
+  // ── Validation ──────────────────────────────────────────
+  if (periodNo < 1 || periodNo > freq) {
+    showError(`Period number must be between 1 and ${freq}.`);
+    return;
+  }
+
+  // ── Step 1: Cumulative Gross ────────────────────────────
+  // True HMRC cumulative: use actual YTD gross + current period gross (after PCLS)
+  // NO annualisation — NO multiplying up by (totalPeriods / periodNumber)
+  const cumulativeGross = ytdGross + taxableGross;
+
+  // ── Taper: NOT applied in cumulative PAYE ────────────────
+  // HMRC builds any personal allowance taper into the tax code itself
+  // (e.g. reducing 1257L to a lower code or issuing a K code).
+  // The employer/simulator must use the code as issued without further adjustment.
+  // Projected annual is kept for informational display only.
+  const projectedAnnualForTaper = cumulativeGross * (freq / periodNo);
+  const adjustedAnnualAllowance = parsed.annualAllowance;
+  let taperApplied = false;
+
+  // ── Step 2: Cumulative Allowance ───────────────────────
+  // Scale the annual allowance by period proportion
+  // This is the ONLY scaling allowed: allowance × (periodNumber ÷ totalPeriods)
+  let cumulativeAllowance;
+  if (parsed.isFlatRate) {
+    cumulativeAllowance = 0;
+  } else if (parsed.isKCode) {
+    cumulativeAllowance = parsed.annualAllowance * (periodNo / freq);
+  } else {
+    cumulativeAllowance = adjustedAnnualAllowance * (periodNo / freq);
+  }
+
+  // ── Step 3: Cumulative Taxable Pay ─────────────────────
+  let cumulativeTaxable;
+  if (parsed.isKCode) {
+    // K-code: add the absolute value of the negative allowance
+    cumulativeTaxable = cumulativeGross + Math.abs(cumulativeAllowance);
+  } else {
+    // Standard codes: gross minus allowance, floored at zero
+    cumulativeTaxable = Math.max(0, cumulativeGross - cumulativeAllowance);
+  }
+
+  // ── Step 4: Total Tax Due to Date ────────────────────────
+  // HMRC PAYE Spec Definition 9: Band thresholds are pro-rated by (periodNo / totalPeriods).
+  // Both allowance AND band thresholds are scaled by period proportion.
+  let totalTaxDue;
+  if (parsed.isFlatRate) {
+    totalTaxDue = cumulativeTaxable * parsed.flatRate;
+  } else {
+    totalTaxDue = bandTaxCumulativeRoute(cumulativeTaxable, periodNo, freq, parsed.isScottish);
+  }
+
+  // ── Step 5: Total Tax Due = result from Step 4 (no further adjustment)
+
+  // ── Step 6: Current Period Tax ─────────────────────────
+  // True cumulative PAYE = tax on actual earnings to date − tax already paid
+  let currentTax = totalTaxDue - ytdTax;
+
+  // ── Step 7: Safeguards ─────────────────────────────────
+  const taxBeforeCap = currentTax;
+  // 50% safeguard applies ONLY to current period tax (K-codes)
+  const safeguardLimit = taxableGross * 0.50;
+  let wasCapped = false;
+
+  if (parsed.isKCode && currentTax > safeguardLimit) {
+    currentTax = safeguardLimit;
+    wasCapped = true;
+  }
+
+  // ── Step 7b: Refund Handling ───────────────────────────
+  // CUMULATIVE MODE: if currentTax < 0, treat as refund — do NOT clamp to zero
+  const isRefund = currentTax < 0;
+  const net = gross - currentTax; // negative tax increases net
+  const effectiveRate = gross > 0 ? (currentTax / gross) * 100 : 0;
+
+  // Update label if refund
+  const taxLabel = document.getElementById("rc_taxLabel");
+  if (taxLabel) {
+    taxLabel.textContent = isRefund ? "Tax Refund Due" : "Income Tax Deducted";
+    taxLabel.className = isRefund
+      ? "text-sm font-semibold text-emerald-700"
+      : "text-sm font-semibold text-slate-700";
+  }
+
+  // ── Display ────────────────────────────────────────────
+  setText("rc_pcls", taxFreeAmount);
+  setText("rc_taxableGross", taxableGross);
+  setText("rc_cumGross", cumulativeGross);
+  setText("rc_cumAllowance", Math.abs(cumulativeAllowance));
+  setText("rc_cumTaxable", cumulativeTaxable);
+  setText("rc_totalTaxDue", totalTaxDue);
+  setText("rc_ytdPaid", ytdTax);
+  setText("rc_taxBeforeCap", taxBeforeCap);
+  setText("rc_safeguardLimit", safeguardLimit);
+  setText("rc_tax", Math.abs(currentTax));
+  setText("rc_effectiveRate", Math.abs(effectiveRate));
+  setText("rc_net", net);
+
+  // Implied annual — informational only (projected from cumulative, NOT used in tax calc)
+  // Value is set inside showResults after label rebuild
+
+  // Hide reclaim panel in cumulative mode
+  hide("reclaimPanel");
+  hide("otherIncomeWarning");
+
+  showResults("cumulative", code, wasCapped, isSSAS, gross, taperApplied, parsed.isScottish, taxFreeAmount, projectedAnnualForTaper);
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// DISPLAY RESULTS — extended with emergency + taper badges
+// ══════════════════════════════════════════════════════════════
+
+function showResults(mode, code, wasCapped, isSSAS, gross, taperApplied, isScottish, taxFreeAmount, impliedAnnualValue) {
+  const resultEl = document.getElementById("result");
+  const ncPanel  = document.getElementById("resultNonCum");
+  const cPanel   = document.getElementById("resultCum");
+  const badge    = document.getElementById("modeBadge");
+  const codeUsed = document.getElementById("codeUsed");
+  const clean    = code.replace(/^[CS]/, "");
+
+  // Show correct panel
+  if (mode === "noncumulative") {
+    show("resultNonCum"); hide("resultCum");
+    badge.textContent = "M1 / W1";
+    badge.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700 badge-pulse";
+  } else {
+    hide("resultNonCum"); show("resultCum");
+    badge.textContent = "CUMULATIVE";
+    badge.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-100 text-blue-700 badge-pulse";
+  }
+
+  codeUsed.textContent = `Tax Code: ${code}`;
+
+  // Taper badge
+  if (taperApplied) show("taperBadge"); else hide("taperBadge");
+
+  // Scottish badge
+  if (isScottish) show("scottishBadge"); else hide("scottishBadge");
+
+  // Implied annual income box
+  show("impliedAnnualBox");
+  const impliedLabel = document.getElementById("impliedAnnualLabel");
+  if (impliedLabel) {
+    if (mode === "cumulative") {
+      impliedLabel.innerHTML = 'Projected annual income: <strong>£<span id="impliedAnnual">0</span></strong> <span class="text-[11px] opacity-75">(for taper check only — not used in tax calculation)</span>';
+    } else {
+      impliedLabel.innerHTML = 'HMRC assumes annual income of <strong>£<span id="impliedAnnual">0</span></strong> based on this payment';
+    }
+    // Set the value after the span is rebuilt
+    if (impliedAnnualValue !== undefined) {
+      setText("impliedAnnual", impliedAnnualValue);
+    }
+  }
+
+  // PCLS >25% soft warning
+  if (taxFreeAmount > 0 && gross > 0 && (taxFreeAmount / gross) > 0.25) {
+    show("pclsWarning");
+  } else {
+    hide("pclsWarning");
+  }
+
+  // 50% safeguard warning
+  if (wasCapped) show("safeguardWarning"); else hide("safeguardWarning");
+
+  // Emergency tax warning: 0T, SSAS checked, or non-cumulative without prior context
+  const isEmergency = clean === "0T" || isSSAS || (mode === "noncumulative" && !isSSAS);
+  if (isEmergency) show("emergencyWarning"); else hide("emergencyWarning");
+
+  // SSAS warning (gross > £10k + SSAS checked)
+  if (isSSAS && gross > 10000) show("ssasWarning"); else hide("ssasWarning");
+
+  show("result");
+}
+
+</script>
+
+</body>
+</html>

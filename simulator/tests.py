@@ -244,3 +244,10 @@ class TaxCodeParserTests(SimpleTestCase):
         self.assertTrue(parsed.is_k_code)
         self.assertEqual(parsed.annual_allowance, -3920)
         self.assertFalse(parsed.is_flat_rate)
+
+    def test_1288l_is_supported_by_python_calculator(self):
+        parsed = parse_tax_code("1288L")
+
+        self.assertFalse(parsed.is_k_code)
+        self.assertEqual(parsed.annual_allowance, 12880)
+        self.assertFalse(parsed.is_flat_rate)
